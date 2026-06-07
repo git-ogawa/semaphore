@@ -350,6 +350,48 @@
             v-model="item.suppress_success_alerts"
           />
 
+          <v-checkbox
+            class="mt-0"
+            :label="$t('suppressFailureAlerts')"
+            v-model="item.suppress_failure_alerts"
+          />
+
+          <v-select
+            v-model="item.slack_notification_started_id"
+            :label="$t('slackNotificationStarted')"
+            :items="slackNotifications"
+            item-value="id"
+            item-text="name"
+            :disabled="formSaving"
+            clearable
+            outlined
+            dense
+          />
+
+          <v-select
+            v-model="item.slack_notification_success_id"
+            :label="$t('slackNotificationSuccess')"
+            :items="slackNotifications"
+            item-value="id"
+            item-text="name"
+            :disabled="formSaving"
+            clearable
+            outlined
+            dense
+          />
+
+          <v-select
+            v-model="item.slack_notification_failure_id"
+            :label="$t('slackNotificationFailure')"
+            :items="slackNotifications"
+            item-value="id"
+            item-text="name"
+            :disabled="formSaving"
+            clearable
+            outlined
+            dense
+          />
+
           <div style="position: relative">
             <ArgsPicker
               :vars="args"
@@ -598,6 +640,7 @@ export default {
       runnerTags: null,
       branches: null,
       setBranch: false,
+      slackNotifications: [],
     };
   },
 
@@ -632,6 +675,7 @@ export default {
 
   async created() {
     await this.loadBranches();
+    await this.loadSlackNotifications();
   },
 
   computed: {
@@ -726,6 +770,18 @@ export default {
   },
 
   methods: {
+    async loadSlackNotifications() {
+      try {
+        this.slackNotifications = (await axios({
+          method: 'get',
+          url: `/api/project/${this.projectId}/slack_notifications`,
+          responseType: 'json',
+        })).data || [];
+      } catch (e) {
+        this.slackNotifications = [];
+      }
+    },
+
     async loadBranches() {
       if (this.repositoryId == null) {
         return;

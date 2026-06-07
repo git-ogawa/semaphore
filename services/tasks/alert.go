@@ -3,10 +3,13 @@ package tasks
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"fmt"
 	htmltemplate "html/template"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"text/template"
 
 	"github.com/semaphoreui/semaphore/db"
@@ -199,6 +202,228 @@ func (t *TaskRunner) sendSlackAlert() {
 		return
 	}
 
+	if t.Template.SuppressFailureAlerts && t.Task.Status == task_logger.TaskFailStatus {
+		return
+	}
+
+	var notifID *int
+	switch t.Task.Status {
+	case task_logger.TaskSuccessStatus:
+		notifID = t.Template.SlackNotificationSuccessID
+	case task_logger.TaskFailStatus:
+		notifID = t.Template.SlackNotificationFailureID
+	case task_logger.TaskRunningStatus:
+		notifID = t.Template.SlackNotificationStartedID
+	}
+
+	if notifID != nil {
+		n, err := t.pool.store.GetSlackNotification(t.Template.ProjectID, *notifID)
+		if err != nil {
+			t.Log("Can't get slack notification template! Error: " + err.Error())
+			return
+		}
+		t.sendSlackAlertViaAPI(n)
+		return
+	}
+
+	if util.Config.SlackToken != "" && util.Config.SlackChannel != "" {
+		t.sendSlackAlertViaAPIGlobal()
+		return
+	}
+
+	t.sendSlackAlertViaWebhook()
+}
+
+func (t *TaskRunner) slackMessage(n *db.SlackNotification) string {
+	var customMsg *string
+	if n != nil {
+		switch t.Task.Status {
+		case task_logger.TaskSuccessStatus:
+			customMsg = n.SuccessMessage
+		case task_logger.TaskFailStatus:
+			customMsg = n.ErrorMessage
+		case task_logger.TaskRunningStatus:
+			customMsg = n.StartedMessage
+		}
+	}
+	if customMsg != nil && *customMsg != "" {
+		tmplStr := *customMsg
+		tmpl, err := template.New("slack_msg").Parse(tmplStr)
+		if err != nil {
+			t.Log("Can't parse slack message template: " + err.Error())
+			return fmt.Sprintf("Job #%d '%s' %s: %s", t.Task.ID, t.Template.Name, t.Task.Status.Format(), t.taskLink())
+		}
+		data := map[string]any{
+			"JobID":   t.Task.ID,
+			"Name":    t.Template.Name,
+			"Status":  t.Task.Status.Format(),
+			"URL":     t.taskLink(),
+			"Author":  "",
+			"Version": "",
+		}
+		author, version := t.alertInfos()
+		data["Author"] = author
+		data["Version"] = version
+
+		var buf bytes.Buffer
+		if err := tmpl.Execute(&buf, data); err != nil {
+			t.Log("Can't execute slack message template: " + err.Error())
+			return fmt.Sprintf("Job #%d '%s' %s: %s", t.Task.ID, t.Template.Name, t.Task.Status.Format(), t.taskLink())
+		}
+		return buf.String()
+	}
+	return fmt.Sprintf("Job #%d '%s' %s: %s", t.Task.ID, t.Template.Name, t.Task.Status.Format(), t.taskLink())
+}
+
+func (t *TaskRunner) sendSlackAlertViaAPIGlobal() {
+	n := db.SlackNotification{
+		Token:   util.Config.SlackToken,
+		Channel: util.Config.SlackChannel,
+		Color:   t.alertColor("slack"),
+	}
+	t.sendSlackAlertViaAPI(n)
+}
+
+func (t *TaskRunner) sendSlackAlertViaAPI(n db.SlackNotification) {
+	color := n.Color
+	msg := t.slackMessage(&n)
+
+	for _, recipient := range strings.Split(n.Channel, ",") {
+		recipient = strings.TrimSpace(recipient)
+		if recipient == "" {
+			continue
+		}
+
+		channel := recipient
+		threadTs := ""
+		if idx := strings.Index(recipient, ":"); idx >= 0 {
+			channel = recipient[:idx]
+			threadTs = recipient[idx+1:]
+		}
+		if strings.HasPrefix(channel, "#") {
+			channel = channel[1:]
+		}
+
+		var payload string
+		if color != "" {
+			if threadTs != "" {
+				payload = fmt.Sprintf(
+					`{"channel":%q,"thread_ts":%q,"as_user":true,"attachments":[{"color":%q,"text":%q}]}`,
+					channel, threadTs, color, msg,
+				)
+			} else {
+				payload = fmt.Sprintf(
+					`{"channel":%q,"as_user":true,"attachments":[{"color":%q,"text":%q}]}`,
+					channel, color, msg,
+				)
+			}
+		} else {
+			if threadTs != "" {
+				payload = fmt.Sprintf(
+					`{"channel":%q,"thread_ts":%q,"as_user":true,"text":%q}`,
+					channel, threadTs, msg,
+				)
+			} else {
+				payload = fmt.Sprintf(
+					`{"channel":%q,"as_user":true,"text":%q}`,
+					channel, msg,
+				)
+			}
+		}
+
+		req, err := http.NewRequest("POST", "https://slack.com/api/chat.postMessage", bytes.NewBufferString(payload))
+		if err != nil {
+			t.Log("Can't create slack API request! Error: " + err.Error())
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+n.Token)
+
+		t.Logf("Attempting to send slack alert to %s", channel)
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Log("Can't send slack alert! Error: " + err.Error())
+			continue
+		}
+
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close() //nolint:errcheck
+
+		if resp.StatusCode != 200 {
+			t.Log("Can't send slack alert! Response code: " + strconv.Itoa(resp.StatusCode))
+		} else {
+			var result slackResponse
+			if err := json.Unmarshal(respBody, &result); err == nil && !result.OK {
+				t.Logf("Slack API error: %s", result.Error)
+			} else {
+				t.Logf("Sent successfully slack alert to %s", channel)
+			}
+		}
+	}
+}
+
+func SendSlackTestNotification(n db.SlackNotification) error {
+	msg := "This is a test notification from Semaphore"
+	for _, recipient := range strings.Split(n.Channel, ",") {
+		recipient = strings.TrimSpace(recipient)
+		if recipient == "" {
+			continue
+		}
+		channel := recipient
+		if strings.HasPrefix(channel, "#") {
+			channel = channel[1:]
+		}
+
+		var payload string
+		if n.Color != "" {
+			payload = fmt.Sprintf(
+				`{"channel":%q,"as_user":true,"attachments":[{"color":%q,"text":%q}]}`,
+				channel, n.Color, msg,
+			)
+		} else {
+			payload = fmt.Sprintf(
+				`{"channel":%q,"as_user":true,"text":%q}`,
+				channel, msg,
+			)
+		}
+
+		req, err := http.NewRequest("POST", "https://slack.com/api/chat.postMessage", bytes.NewBufferString(payload))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+n.Token)
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close() //nolint:errcheck
+
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("slack API returned %d", resp.StatusCode)
+		}
+
+		var result slackResponse
+		if err := json.Unmarshal(body, &result); err != nil {
+			return fmt.Errorf("failed to parse slack response")
+		}
+		if !result.OK {
+			return fmt.Errorf("slack error: %s", result.Error)
+		}
+	}
+	return nil
+}
+
+type slackResponse struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error"`
+}
+
+func (t *TaskRunner) sendSlackAlertViaWebhook() {
 	body := bytes.NewBufferString("")
 	author, version := t.alertInfos()
 
@@ -232,10 +457,15 @@ func (t *TaskRunner) sendSlackAlert() {
 		return
 	}
 
-	t.Log("Attempting to send slack alert")
+	slackUrl := util.Config.SlackUrl
+	if t.alertSlackUrl != nil && *t.alertSlackUrl != "" {
+		slackUrl = *t.alertSlackUrl
+	}
+
+	t.Log("Attempting to send slack alert via webhook")
 
 	resp, err := http.Post(
-		util.Config.SlackUrl,
+		slackUrl,
 		"application/json",
 		body,
 	)
@@ -542,9 +772,9 @@ func (t *TaskRunner) alertColor(kind string) string {
 	case "slack":
 		switch t.Task.Status {
 		case task_logger.TaskSuccessStatus:
-			return "good"
+			return "#2EFF2E"
 		case task_logger.TaskFailStatus:
-			return "danger"
+			return "#E50000"
 		case task_logger.TaskRunningStatus:
 			return "#333CFF"
 		case task_logger.TaskWaitingStatus:

@@ -333,6 +333,15 @@ func Route(
 
 	projectUserAPI.Path("/integrations").HandlerFunc(projects.GetIntegrations).Methods("GET", "HEAD")
 	projectUserAPI.Path("/integrations").HandlerFunc(projects.AddIntegration).Methods("POST")
+	projectUserAPI.Path("/slack_notifications").HandlerFunc(projects.GetSlackNotifications).Methods("GET", "HEAD")
+	projectUserAPI.Path("/slack_notifications").HandlerFunc(projects.AddSlackNotification).Methods("POST")
+
+	projectSlackNotifAPI := projectUserAPI.PathPrefix("/slack_notifications").Subrouter()
+	projectSlackNotifAPI.Path("/{slack_notification_id}").HandlerFunc(projects.GetSlackNotification).Methods("GET", "HEAD")
+	projectSlackNotifAPI.Path("/{slack_notification_id}").HandlerFunc(projects.UpdateSlackNotification).Methods("PUT")
+	projectSlackNotifAPI.Path("/{slack_notification_id}").HandlerFunc(projects.DeleteSlackNotification).Methods("DELETE")
+	projectSlackNotifAPI.Path("/{slack_notification_id}/test").HandlerFunc(projects.TestSlackNotification).Methods("POST")
+
 	projectUserAPI.Path("/backup").HandlerFunc(projects.GetBackup).Methods("GET", "HEAD")
 	projectUserAPI.Path("/notifications/test").HandlerFunc(projectController.SendTestNotification).Methods("POST")
 

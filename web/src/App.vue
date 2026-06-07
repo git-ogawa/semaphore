@@ -1171,6 +1171,12 @@ export default {
             to: `${base}/integrations`,
             testId: 'sidebar-integrations',
           },
+          {
+            key: 'slack_notifications',
+            icon: 'mdi-slack',
+            title: this.$t('slackNotifications'),
+            to: `${base}/slack-notifications`,
+          },
         );
       }
 

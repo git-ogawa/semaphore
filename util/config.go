@@ -370,6 +370,8 @@ type ConfigType struct {
 	TelegramToken       string `json:"telegram_token,omitempty" env:"SEMAPHORE_TELEGRAM_TOKEN,sensitive"`
 	SlackAlert          bool   `json:"slack_alert,omitempty" env:"SEMAPHORE_SLACK_ALERT"`
 	SlackUrl            string `json:"slack_url,omitempty" env:"SEMAPHORE_SLACK_URL"`
+	SlackToken          string `json:"slack_token,omitempty" env:"SEMAPHORE_SLACK_TOKEN,sensitive"`
+	SlackChannel        string `json:"slack_channel,omitempty" env:"SEMAPHORE_SLACK_CHANNEL"`
 	RocketChatAlert     bool   `json:"rocketchat_alert,omitempty" env:"SEMAPHORE_ROCKETCHAT_ALERT"`
 	RocketChatUrl       string `json:"rocketchat_url,omitempty" env:"SEMAPHORE_ROCKETCHAT_URL"`
 	MicrosoftTeamsAlert bool   `json:"microsoft_teams_alert,omitempty" env:"SEMAPHORE_MICROSOFT_TEAMS_ALERT"`

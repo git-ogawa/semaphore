@@ -25,14 +25,16 @@ func (d *SqlDb) CreateTemplate(template db.Template) (newTemplate db.Template, e
 			"project_id, inventory_id, repository_id, name, "+
 			"playbook, arguments, allow_override_args_in_task, description, `type`, "+
 			"start_version, build_template_id, view_id, autorun, survey_vars, "+
-			"suppress_success_alerts, app, git_branch, runner_tag, task_params, "+
-			"allow_override_branch_in_task, allow_parallel_tasks)"+
+			"suppress_success_alerts, suppress_failure_alerts, app, git_branch, runner_tag, task_params, "+
+			"allow_override_branch_in_task, allow_parallel_tasks, "+
+			"slack_notification_started_id, slack_notification_success_id, slack_notification_failure_id)"+
 			"values ("+
 			"?, ?, ?, ?, "+
 			"?, ?, ?, ?, ?, "+
 			"?, ?, ?, ?, ?, "+
-			"?, ?, ?, ?, ?,"+
-			"?, ?)",
+			"?, ?, ?, ?, ?, ?, "+
+			"?, ?, "+
+			"?, ?, ?)",
 		template.ProjectID,
 		template.InventoryID,
 		template.RepositoryID,
@@ -51,6 +53,7 @@ func (d *SqlDb) CreateTemplate(template db.Template) (newTemplate db.Template, e
 		db.ObjectToJSON(template.SurveyVars),
 
 		template.SuppressSuccessAlerts,
+		template.SuppressFailureAlerts,
 		template.App,
 		template.GitBranch,
 		template.RunnerTag,
@@ -58,6 +61,10 @@ func (d *SqlDb) CreateTemplate(template db.Template) (newTemplate db.Template, e
 
 		template.AllowOverrideBranchInTask,
 		template.AllowParallelTasks,
+
+		template.SlackNotificationStartedID,
+		template.SlackNotificationSuccessID,
+		template.SlackNotificationFailureID,
 	)
 
 	if err != nil {
@@ -108,12 +115,16 @@ func (d *SqlDb) UpdateTemplate(template db.Template) error {
 		"autorun=?, "+
 		"survey_vars=?, "+
 		"suppress_success_alerts=?, "+
+		"suppress_failure_alerts=?, "+
 		"app=?, "+
 		"`git_branch`=?, "+
 		"task_params=?, "+
 		"runner_tag=?, "+
 		"allow_override_branch_in_task=?, "+
-		"allow_parallel_tasks=? "+
+		"allow_parallel_tasks=?, "+
+		"slack_notification_started_id=?, "+
+		"slack_notification_success_id=?, "+
+		"slack_notification_failure_id=? "+
 		"where id=? and project_id=?",
 		template.InventoryID,
 		template.RepositoryID,
@@ -129,12 +140,16 @@ func (d *SqlDb) UpdateTemplate(template db.Template) error {
 		template.Autorun,
 		db.ObjectToJSON(template.SurveyVars),
 		template.SuppressSuccessAlerts,
+		template.SuppressFailureAlerts,
 		template.App,
 		template.GitBranch,
 		template.TaskParams,
 		template.RunnerTag,
 		template.AllowOverrideBranchInTask,
 		template.AllowParallelTasks,
+		template.SlackNotificationStartedID,
+		template.SlackNotificationSuccessID,
+		template.SlackNotificationFailureID,
 
 		template.ID,
 		template.ProjectID,

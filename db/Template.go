@@ -160,6 +160,11 @@ type Template struct {
 	SurveyVars     []SurveyVar `db:"-" json:"survey_vars,omitempty" backup:"survey_vars"`
 
 	SuppressSuccessAlerts bool `db:"suppress_success_alerts" json:"suppress_success_alerts,omitempty"`
+	SuppressFailureAlerts bool `db:"suppress_failure_alerts" json:"suppress_failure_alerts,omitempty"`
+
+	SlackNotificationStartedID *int `db:"slack_notification_started_id" json:"slack_notification_started_id,omitempty" backup:"-"`
+	SlackNotificationSuccessID *int `db:"slack_notification_success_id" json:"slack_notification_success_id,omitempty" backup:"-"`
+	SlackNotificationFailureID *int `db:"slack_notification_failure_id" json:"slack_notification_failure_id,omitempty" backup:"-"`
 
 	App TemplateApp `db:"app" json:"app,omitempty"`
 

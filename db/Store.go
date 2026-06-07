@@ -547,6 +547,16 @@ type Store interface {
 	SecretStorageRepository
 	SecretSyncRepository
 	RoleRepository
+	SlackNotificationManager
+}
+
+var SlackNotificationProps = ObjectProps{
+	TableName:             "project__slack_notification",
+	Type:                  reflect.TypeOf(SlackNotification{}),
+	PrimaryColumnName:     "id",
+	ReferringColumnSuffix: "slack_notification_id",
+	SortableColumns:       []string{"name"},
+	DefaultSortingColumn:  "name",
 }
 
 var AccessKeyProps = ObjectProps{
